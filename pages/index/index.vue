@@ -1,10 +1,12 @@
 <template>
 	<view class="content">
-		<image class="logo" src="/static/logo.png"></image>
-		<view class="text-area">
-			<text class="title">{{title}}</text>
-		</view>
-		<view id="google-signin-button" style="margin-top: 20px;"></view>
+		<image class="logo" :src="pic"/>
+		<view class="title">{{title}}</view>
+		<view class="title">{{email}}</view>
+    <view class="title">
+      <button type="primary" style="margin-top: 10px" @click="auth">谷歌授权登录</button>
+    </view>
+
 	</view>
 </template>
 
@@ -12,80 +14,71 @@
 	export default {
 		data() {
 			return {
-				title: 'Hello'
+				title: 'Hello',
+				pic: '/static/logo.png',
+				email: ''
 			}
 		},
 		onLoad() {
-			this.init();
+			this.login();
 		},
 		methods: {
-			init() {
-				this.loadGoogleScript();
+			login() {
+				const urlParams = new URLSearchParams(window.location.search);
+				const code = urlParams.get('code');
+				if (!code) {
+					return
+				}
+				const tokenEndpoint = 'https://oauth2.googleapis.com/token';
+				const requestBody = new URLSearchParams();
+				requestBody.append('code', code);
+				requestBody.append('client_id',
+					'你的client_id');
+				requestBody.append('client_secret', '你的client_secret');
+				requestBody.append('redirect_uri', 'http://localhost:8080');
+				requestBody.append('grant_type', 'authorization_code'); //这些参数在之前配置的有，看前面的代码
+
+				fetch(tokenEndpoint, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/x-www-form-urlencoded',
+						},
+						body: requestBody
+					})
+					.then(response => response.json())
+					.then(data => {
+						const accessToken = data.access_token; //打印data可以获得token令牌的信息
+
+
+						fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+								headers: {
+									Authorization: `Bearer ${accessToken}`
+								}
+							})
+							.then(response => response.json())
+							.then(userInfo => {
+								this.title = userInfo.name
+								this.pic = userInfo.picture
+								this.email = userInfo.email
+								console.log(userInfo)
+							})
+
+					})
 			},
-			/**
-			 * 创建并添加一个脚本元素到文档头部，用于加载Google登录的客户端库。
-			 * 这是初始化Google Sign-In过程的第一步，它需要在页面加载时异步加载Google的JavaScript库。
-			 * 
-			 * 通过设置脚本的src属性为Google登录客户端库的URL，script元素将负责下载并执行这个库。
-			 * 设置async和defer属性为true，确保脚本可以异步加载，不会阻塞页面的渲染。
-			 * 设置onload属性为一个回调函数，当脚本加载完成时，这个回调函数将会被调用，用于初始化Google Sign-In。
-			 */
-			loadGoogleScript() {
-				const script = document.createElement('script');
-				script.src = 'https://accounts.google.com/gsi/client';
-				script.async = true;
-				script.defer = true;
-				script.onload = this.initGoogleSignIn;
-				document.head.appendChild(script);
-			},
-			/**
-			 * 初始化Google登录按钮并配置登录回调。
-			 * 该方法设置了窗口的handleCredentialResponse函数，用于处理Google登录的响应。
-			 * 它还初始化了Google账号ID模块，配置了客户端ID、用户界面模式和回调函数。
-			 * 最后，它渲染了Google登录按钮，并触发登录提示框。
-			 */
-			initGoogleSignIn() {
-				// 绑定handleCredentialResponse方法到当前上下文，确保this指向正确
-				window.handleCredentialResponse = this.handleCredentialResponse.bind(this);
-				// 初始化Google账号ID，配置客户端ID、用户体验模式和回调函数
-				window.google.accounts.id.initialize({
-					client_id: '6764784206-2evu6trfap49bgm6o7ss57dcs65ohdnb.apps.googleusercontent.com',
-					ux_mode: 'redirect',
-					callback: this.handleCredentialResponse
-				});
-				// 渲染Google登录按钮，设置按钮主题和大小
-				window.google.accounts.id.renderButton(
-					document.getElementById('google-signin-button'), {
-						theme: 'outline',
-						size: 'large'
-					}
-				);
-				// 触发Google登录提示框，引导用户进行登录操作
-				window.google.accounts.id.prompt();
-			},
-			/**
-			 * 处理Google登录的响应。
-			 * 
-			 * 当用户通过Google登录成功后，Google会返回一个认证凭证，本函数负责将这个凭证发送到服务器进行验证。
-			 * 验证成功后，会进一步处理登录成功的行为，如设置用户信息等；验证失败则处理登录失败的逻辑。
-			 * 
-			 * @param {Object} response - Google登录认证的响应对象，包含认证凭证。
-			 * @param {string} response.credential - 由Google颁发的认证凭证，用于服务器端验证用户身份。
-			 */
-			handleCredentialResponse(response) {
-				console.log('Encoded JWT ID token: ' + response.credential);
-				// 发送请求到后端验证Google返回的ID token
-				uni.request({
-				    url: '/api/auth/google', 
-					method: 'POST',
-				    data: {
-				        token: response.credential
-				    },
-				    success: (res) => {
-				        console.log(res.data);
-				        this.text = 'request success';
-				    }
-				});
+			auth() {
+				window.clientId =
+					'你的client_id'; // 你的 Google OAuth 客户端 ID
+				window.redirectUri = 'http://localhost:8080'; // 重定向 URI
+				window.scope = 'email profile'; // 请求的权限范围，可以根据需求修改
+				window.state = ''; // 用于防止跨站请求伪造（CSRF）攻击，可以不设置，可以随心设置
+				window.responseType = 'code'; // 授权响应类型，表示要求返回授权码
+				window.clientSecret = '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'; //Google OAuth 客户端密钥（不是api密钥）
+				window.grantType = 'authorization_code';
+				//&prompt=login 把它加到window.authUrl的末尾可以让用户每次都需要重新输入账号和密码
+				window.authUrl =
+					`https://accounts.google.com/o/oauth2/v2/auth?client_id=${window.clientId}&redirect_uri=${window.redirectUri}&scope=${window.scope}&state=${window.state}&response_type=${window.responseType}`;
+				//点击Google登录  执行这个方法进行跳转
+				window.location.href = window.authUrl
 			},
 		}
 	}
@@ -102,19 +95,13 @@
 	.logo {
 		height: 200rpx;
 		width: 200rpx;
-		margin-top: 200rpx;
-		margin-left: auto;
-		margin-right: auto;
-		margin-bottom: 50rpx;
-	}
-
-	.text-area {
-		display: flex;
-		justify-content: center;
-	}
+    margin: 200 rpx auto 50 rpx;
+    margin-top: 40rpx;
+  }
 
 	.title {
 		font-size: 36rpx;
 		color: #8f8f94;
+    margin-top: 20rpx;
 	}
 </style>
